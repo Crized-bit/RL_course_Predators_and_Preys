@@ -1,4 +1,5 @@
 import numpy as np
+np.random.seed(1337)
 import copy
 import cv2
 import os

@@ -226,7 +226,6 @@ class DQN:
         self.distance_map = np.where(self.distance_map == (coords_amount + 1), np.nan, self.distance_map)
 
     def preprocess_data(self, state: np.ndarray, info: dict) -> tuple[np.ndarray, np.ndarray]:
-        state = np.array(state)
         num_teams = info["preys"][0]["team"]
 
         hunters_coordinates = np.array([(agent["y"], agent["x"]) for agent in info["predators"]])

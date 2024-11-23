@@ -1,10 +1,15 @@
 import os
+import copy
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 import wandb
 wandb.login()
 import numpy as np
 import torch
+import random
+np.random.seed(1337)
+torch.manual_seed(1337)
+random.seed(1337)
 from tqdm import tqdm
 
 from src.DQN import DQN
@@ -20,8 +25,6 @@ from world.scripted_agents import Dummy, ClosestTargetAgent, BrokenClosestTarget
 MIN_REWARD = 0
 run = wandb.init(project="rl_preys_predators_2", name="broken_closest_greedy_act_new_reward")
 
-np.random.seed(1337)
-torch.manual_seed(1337)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 env = VersusBotEnv(Realm(TwoTeamRocksMapLoader(), 2, bots={1: BrokenClosestTargetAgent()}))
 # env = OnePlayerEnv(Realm(SingleTeamRocksMapLoader(), 1))
@@ -113,10 +116,11 @@ for i in tqdm(range(TRANSITIONS)):
     else:
         processed_state = next_processed_state
         state = next_state.copy()
-        info = next_info.copy()
+        info = copy.deepcopy(next_info)
 
     if (i + 1) % (TRANSITIONS // 100) == 0:
-        rewards, enemy_rewards = evaluate_policy(dqn, env, episodes=5)
+        rewards, enemy_rewards = evaluate_policy(dqn, VersusBotEnv(Realm(TwoTeamRocksMapLoader(), 2, bots={1: BrokenClosestTargetAgent()})), episodes=5)
+        dqn.reset(state, info)
         our_mean = np.mean(rewards)
         our_std = np.std(rewards)
         enemy_mean = np.mean(enemy_rewards)

@@ -20,14 +20,14 @@ dqn = DQN(
     embedding_size=256,
     num_input_channels=6,
     #   save_path="/home/RL_course_Predators_and_Preys/best_bot_vs_normal/",
-    load_path="/home/RL_course_Predators_and_Preys/best_bot_vs_normal/",
+    load_path="/home/vk/RL_course_Predators_and_Preys/best_bot_ddqn_dummy_greedy/",
     device=device,
 )
 
 rewards, enemy_rewards = evaluate_policy(dqn, env, episodes=1, do_render=True)
 
-with imageio.get_writer("/home/Episode_1/0_movie.gif", mode="I", duration=0.5) as writer:
-    for filename in sorted(list(Path("/home/Episode_1/").glob("*.png")), key=lambda x: int(x.stem)):
+with imageio.get_writer("/home/vk/Episode_1/0_movie.gif", mode="I", duration=0.5) as writer:
+    for filename in sorted(list(Path("/home/vk/Episode_1/").glob("*.png")), key=lambda x: int(x.stem)):
         print(filename)
         image = imageio.imread(filename)
         writer.append_data(image)  # type: ignore

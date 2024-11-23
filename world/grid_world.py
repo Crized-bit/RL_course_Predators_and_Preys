@@ -1,6 +1,7 @@
 import numpy as np
 import random
 from .entity import Entity
+random.seed(1337)
 
 
 class GridWorld:
@@ -81,7 +82,7 @@ class GridWorld:
         for i in range(len(self.preys)):
             self.actions[(self.playable_teams_num, self.preys[i].idx)] = self.random.randint(0, 4)
 
-    def reset(self, seed=None):
+    def reset(self, seed=42):
         self.actions.clear()
         self.eaten_preys.clear()
         self.random = random.Random(seed)

@@ -1,6 +1,8 @@
 import abc
 import random
 import numpy as np
+np.random.seed(1337)
+random.seed(1337)
 import copy
 
 
