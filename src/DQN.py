@@ -5,7 +5,6 @@ from torch import nn
 from torch.nn import functional as F
 from torch.optim import Adam  # type: ignore
 from src.utils import Transition, ReplayMemory
-import random
 
 from src.preprocess import RLPreprocessor
 from src.options import (
@@ -16,8 +15,6 @@ from src.options import (
     STEPS_PER_UPDATE,
 )
 from src.utils import get_bonus_counts
-
-random.seed(1337)
 
 
 class DQNModel(nn.Module):
@@ -48,7 +45,9 @@ class DQN:
         self.policy_model_2 = DQNModel(self.num_input_channels, embedding_size).to(self.device)
         self.target_model_2.load_state_dict(self.policy_model_2.state_dict())
 
-        self.replay_buffer = PrioritizedReplayBuffer(alpha=0.6, beta=0.4, storage=ListStorage(INITIAL_STEPS), collate_fn=lambda x: x)
+        self.replay_buffer = PrioritizedReplayBuffer(
+            alpha=0.6, beta=0.4, storage=ListStorage(INITIAL_STEPS), collate_fn=lambda x: x
+        )
         self.criterion = nn.HuberLoss(reduction="none")
         self.optimizer_1 = Adam(self.policy_model_1.parameters(), lr=LEARNING_RATE)
         self.optimizer_2 = Adam(self.policy_model_2.parameters(), lr=LEARNING_RATE)
@@ -118,12 +117,12 @@ class DQN:
             next_state_values_2[non_final_mask] = (
                 self.target_model_2(non_final_next_img, non_final_next_bonuses).max(2).values
             )
-        
+
         min_next_state_values = torch.minimum(next_state_values_1, next_state_values_2)
 
         # Compute the expected Q values
         expected_state_action_values = reward_batch + GAMMA * min_next_state_values
-        
+
         buffer_weights = buffer_info["_weight"].to(self.device)
 
         loss_1 = self.criterion(state_action_values_1.to(torch.float), expected_state_action_values.to(torch.float))
@@ -149,12 +148,12 @@ class DQN:
         policy_net_state_dict_2 = self.policy_model_2.state_dict()
 
         for key_1, key_2 in zip(policy_net_state_dict_1, policy_net_state_dict_2):
-            target_net_state_dict_1[key_1] = policy_net_state_dict_1[key_1] * self.tau + target_net_state_dict_1[key_1] * (
-                1 - self.tau
-            )
-            target_net_state_dict_2[key_2] = policy_net_state_dict_2[key_2] * self.tau + target_net_state_dict_2[key_2] * (
-                1 - self.tau
-            )
+            target_net_state_dict_1[key_1] = policy_net_state_dict_1[key_1] * self.tau + target_net_state_dict_1[
+                key_1
+            ] * (1 - self.tau)
+            target_net_state_dict_2[key_2] = policy_net_state_dict_2[key_2] * self.tau + target_net_state_dict_2[
+                key_2
+            ] * (1 - self.tau)
 
         self.target_model_1.load_state_dict(target_net_state_dict_1)
         self.target_model_2.load_state_dict(target_net_state_dict_2)
@@ -223,11 +222,12 @@ class DQN:
                         if mask[i]:
                             self.distance_map[j] = np.minimum(self.distance_map[j], self.distance_map[i] + 1)
             updated = (old_distances != self.distance_map).sum() > 0
-        
+
         self.action_map = np.zeros((coords_amount, coords_amount), int)
         for j in range(coords_amount):
-            self.action_map[j] = np.argmin(np.stack([self.distance_map[i] + 1 for i in indexes_helper[j]], axis=1),
-                                           axis=1) + 1
+            self.action_map[j] = (
+                np.argmin(np.stack([self.distance_map[i] + 1 for i in indexes_helper[j]], axis=1), axis=1) + 1
+            )
 
         self.distance_map = np.where(self.distance_map == (coords_amount + 1), np.nan, self.distance_map)
 
