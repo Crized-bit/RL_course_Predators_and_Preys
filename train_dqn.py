@@ -1,15 +1,10 @@
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 import copy
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-import wandb
-wandb.login()
 import numpy as np
 import torch
 import random
-np.random.seed(1337)
-torch.manual_seed(1337)
-random.seed(1337)
+import wandb
 from tqdm import tqdm
 
 from src.DQN import DQN
@@ -22,8 +17,14 @@ from world.realm import Realm
 from world.map_loaders.two_teams import TwoTeamLabyrinthMapLoader, TwoTeamRocksMapLoader
 from world.scripted_agents import Dummy, ClosestTargetAgent, BrokenClosestTargetAgent
 
+wandb.login()
+
+np.random.seed(1337)
+torch.manual_seed(1337)
+random.seed(1337)
+
 MIN_REWARD = 0
-run = wandb.init(project="rl_preys_predators_2", name="broken_closest_greedy_act_new_reward")
+run = wandb.init(project="rl_preys_predators_2", name="Test Double Q on not Dummy")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 env = VersusBotEnv(Realm(TwoTeamRocksMapLoader(), 2, bots={1: BrokenClosestTargetAgent()}))
@@ -31,7 +32,7 @@ env = VersusBotEnv(Realm(TwoTeamRocksMapLoader(), 2, bots={1: BrokenClosestTarge
 dqn = DQN(
     embedding_size=256,
     num_input_channels=6,
-    save_path="/home/vk/RL_course_Predators_and_Preys/best_bot_ddqn_closest_greedy_fixed",
+    save_path="/home/RL_course_Predators_and_Preys/best_bot_all/",
     # load_path="/home/vk/RL_course_Predators_and_Preys/best_bot_ddqn_dummy_greedy_fixed/",
     device=device,
 )
@@ -119,7 +120,9 @@ for i in tqdm(range(TRANSITIONS)):
         info = copy.deepcopy(next_info)
 
     if (i + 1) % (TRANSITIONS // 100) == 0:
-        rewards, enemy_rewards = evaluate_policy(dqn, VersusBotEnv(Realm(TwoTeamRocksMapLoader(), 2, bots={1: BrokenClosestTargetAgent()})), episodes=5)
+        rewards, enemy_rewards = evaluate_policy(
+            dqn, VersusBotEnv(Realm(TwoTeamRocksMapLoader(), 2, bots={1: BrokenClosestTargetAgent()})), episodes=5
+        )
         dqn.reset(state, info)
         our_mean = np.mean(rewards)
         our_std = np.std(rewards)
@@ -127,12 +130,14 @@ for i in tqdm(range(TRANSITIONS)):
         enemy_std = np.std(enemy_rewards)
         print(f"Step: {i + 1}, Our reward mean: {our_mean:.3f}, std: {our_std:.3f}")
         print(f"Step: {i + 1}, Enemy reward mean: {enemy_mean:.3f}, std: {enemy_std:.3f}")
-        run.log({
-            "Our mean reward": our_mean, 
-            "Enemy mean reward": enemy_mean,
-            "Reward ratio": our_mean / enemy_mean,
-            "Reward difference": our_mean - enemy_mean,
-            })
+        run.log(
+            {
+                "Our mean reward": our_mean,
+                "Enemy mean reward": enemy_mean,
+                "Reward ratio": our_mean / enemy_mean,
+                "Reward difference": our_mean - enemy_mean,
+            }
+        )
         if our_mean - enemy_mean > MIN_REWARD:
             dqn.save()
             MIN_REWARD = our_mean - enemy_mean

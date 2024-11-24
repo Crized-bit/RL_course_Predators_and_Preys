@@ -1,8 +1,137 @@
+import math
+from typing import Optional, Union, Sequence
+
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
 import numpy as np
 from torchvision.transforms.functional import center_crop
+
+
+class NoisyLinear(nn.Linear):
+    """Noisy Linear Layer.
+
+    Presented in "Noisy Networks for Exploration", https://arxiv.org/abs/1706.10295v3
+
+    A Noisy Linear Layer is a linear layer with parametric noise added to the weights. This induced stochasticity can
+    be used in RL networks for the agent's policy to aid efficient exploration. The parameters of the noise are learned
+    with gradient descent along with any other remaining network weights. Factorized Gaussian
+    noise is the type of noise usually employed.
+
+
+    Args:
+        in_features (int): input features dimension
+        out_features (int): out features dimension
+        bias (bool, optional): if ``True``, a bias term will be added to the matrix multiplication: Ax + b.
+            Defaults to ``True``
+        device (DEVICE_TYPING, optional): device of the layer.
+            Defaults to ``"cpu"``
+        dtype (torch.dtype, optional): dtype of the parameters.
+            Defaults to ``None`` (default pytorch dtype)
+        std_init (scalar, optional): initial value of the Gaussian standard deviation before optimization.
+            Defaults to ``0.1``
+
+    """
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        device: Optional = None,
+        dtype: Optional[torch.dtype] = None,
+        std_init: float = 0.1,
+    ):
+        nn.Module.__init__(self)
+        self.in_features = int(in_features)
+        self.out_features = int(out_features)
+        self.std_init = std_init
+
+        self.weight_mu = nn.Parameter(
+            torch.empty(
+                out_features,
+                in_features,
+                device=device,
+                dtype=dtype,
+                requires_grad=True,
+            )
+        )
+        self.weight_sigma = nn.Parameter(
+            torch.empty(
+                out_features,
+                in_features,
+                device=device,
+                dtype=dtype,
+                requires_grad=True,
+            )
+        )
+        self.register_buffer(
+            "weight_epsilon",
+            torch.empty(out_features, in_features, device=device, dtype=dtype),
+        )
+        if bias:
+            self.bias_mu = nn.Parameter(
+                torch.empty(
+                    out_features,
+                    device=device,
+                    dtype=dtype,
+                    requires_grad=True,
+                )
+            )
+            self.bias_sigma = nn.Parameter(
+                torch.empty(
+                    out_features,
+                    device=device,
+                    dtype=dtype,
+                    requires_grad=True,
+                )
+            )
+            self.register_buffer(
+                "bias_epsilon",
+                torch.empty(out_features, device=device, dtype=dtype),
+            )
+        else:
+            self.bias_mu = None
+        self.reset_parameters()
+        self.reset_noise()
+
+    def reset_parameters(self) -> None:
+        mu_range = 1 / math.sqrt(self.in_features)
+        self.weight_mu.data.uniform_(-mu_range, mu_range)
+        self.weight_sigma.data.fill_(self.std_init / math.sqrt(self.in_features))
+        if self.bias_mu is not None:
+            self.bias_mu.data.uniform_(-mu_range, mu_range)
+            self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.out_features))
+
+    def reset_noise(self) -> None:
+        epsilon_in = self._scale_noise(self.in_features)
+        epsilon_out = self._scale_noise(self.out_features)
+        self.weight_epsilon.copy_(epsilon_out.outer(epsilon_in))
+        if self.bias_mu is not None:
+            self.bias_epsilon.copy_(epsilon_out)
+
+    def _scale_noise(self, size: Union[int, torch.Size, Sequence]) -> torch.Tensor:
+        if isinstance(size, int):
+            size = (size,)
+        x = torch.randn(*size, device=self.weight_mu.device)
+        return x.sign().mul_(x.abs().sqrt_())
+
+    @property
+    def weight(self) -> torch.Tensor:
+        if self.training:
+            return self.weight_mu + self.weight_sigma * self.weight_epsilon
+        else:
+            return self.weight_mu
+
+    @property
+    def bias(self) -> Optional[torch.Tensor]:
+        if self.bias_mu is not None:
+            if self.training:
+                return self.bias_mu + self.bias_sigma * self.bias_epsilon
+            else:
+                return self.bias_mu
+        else:
+            return None
 
 
 def get_bonus_counts(info):
@@ -54,18 +183,27 @@ class ImagePreprocessor(nn.Module):
             ResConvBlock(num_input_channels),
             ResConvBlock(num_input_channels),
             nn.Flatten(),
-            nn.Linear(40 * 40 * num_input_channels, 256),
+            NoisyLinear(40 * 40 * num_input_channels, 256),
         )
 
-        self.size_10 = nn.Linear(10 * 10 * num_input_channels, 256)
+        self.size_10_conv = nn.Sequential(
+            ResConvBlock(num_input_channels),
+            ResConvBlock(num_input_channels),
+            ResConvBlock(num_input_channels),
+        )
+        self.size_10_lin = NoisyLinear(10 * 10 * num_input_channels, 256)
 
-        self.size_5 = nn.Linear(5 * 5 * num_input_channels, 256)
+        self.size_5_conv = nn.Sequential(
+            ResConvBlock(num_input_channels),
+            ResConvBlock(num_input_channels),
+        )
+        self.size_5_lin = NoisyLinear(5 * 5 * num_input_channels, 256)
 
-        self.linear_last = nn.Linear(256 * 3, embedding_size)
+        self.linear_last = NoisyLinear(256 * 3, embedding_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_5 = self.size_5(center_crop(x, [5, 5]).flatten(start_dim=1))
-        x_10 = self.size_10(center_crop(x, [10, 10]).flatten(start_dim=1))
+        x_5 = self.size_5_lin(self.size_5_conv(center_crop(x, [5, 5])).flatten(start_dim=1))
+        x_10 = self.size_10_lin(self.size_10_conv(center_crop(x, [10, 10])).flatten(start_dim=1))
         x_full = self.full_conv(x)
         result = torch.cat((x_full, x_10, x_5), dim=-1)
         return self.linear_last(result)
@@ -89,8 +227,8 @@ class DQNModel(nn.Module):
     def __init__(self, num_input_channels, embedding_size):
         super().__init__()
         self.data_processor = RLPreprocessor(num_input_channels, embedding_size)
-        self.bonus_processor = nn.Linear(1, 32)
-        self.layer3 = nn.Linear(embedding_size + 32, 5)
+        self.bonus_processor = NoisyLinear(1, 32)
+        self.layer3 = NoisyLinear(embedding_size + 32, 5)
 
     def forward(self, img, bonuses):
         x = F.relu(self.data_processor(img))
@@ -156,7 +294,6 @@ class Agent:
         self.distance_map = np.where(self.distance_map == (coords_amount + 1), np.nan, self.distance_map)
 
     def preprocess_data(self, state: np.ndarray, info: dict) -> tuple[np.ndarray, np.ndarray]:
-        state = np.array(state)
         num_teams = info["preys"][0]["team"]
 
         hunters_coordinates = np.array([(agent["y"], agent["x"]) for agent in info["predators"]])

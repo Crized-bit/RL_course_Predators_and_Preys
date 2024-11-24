@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torchvision.transforms.functional import center_crop
+from torchrl.modules import NoisyLinear
 
 
 class ConvBlock(nn.Module):
@@ -48,7 +49,7 @@ class ImagePreprocessor(nn.Module):
             ResConvBlock(num_input_channels),
             ResConvBlock(num_input_channels),
             nn.Flatten(),
-            nn.Linear(40 * 40 * num_input_channels, 256),
+            NoisyLinear(40 * 40 * num_input_channels, 256),
         )
 
         self.size_10_conv = nn.Sequential(
@@ -56,15 +57,15 @@ class ImagePreprocessor(nn.Module):
             ResConvBlock(num_input_channels),
             ResConvBlock(num_input_channels),
         )
-        self.size_10_lin = nn.Linear(10 * 10 * num_input_channels, 256)
+        self.size_10_lin = NoisyLinear(10 * 10 * num_input_channels, 256)
 
         self.size_5_conv = nn.Sequential(
             ResConvBlock(num_input_channels),
             ResConvBlock(num_input_channels),
         )
-        self.size_5_lin = nn.Linear(5 * 5 * num_input_channels, 256)
+        self.size_5_lin = NoisyLinear(5 * 5 * num_input_channels, 256)
 
-        self.linear_last = nn.Linear(256 * 3, embedding_size)
+        self.linear_last = NoisyLinear(256 * 3, embedding_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_5 = self.size_5_lin(self.size_5_conv(center_crop(x, [5, 5])).flatten(start_dim=1))
