@@ -20,7 +20,7 @@ dqn = DQN(
     embedding_size=256,
     num_input_channels=6,
     #   save_path="/home/RL_course_Predators_and_Preys/best_bot_vs_normal/",
-    load_path="/home/vk/RL_course_Predators_and_Preys/best_bot_ddqn_dummy_greedy/",
+    load_path="/home/vk/RL_course_Predators_and_Preys/",
     device=device,
 )
 

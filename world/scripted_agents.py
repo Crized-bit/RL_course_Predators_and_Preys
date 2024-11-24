@@ -100,9 +100,13 @@ class ClosestTargetAgent(ScriptedAgent):
 
 
 class BrokenClosestTargetAgent(ClosestTargetAgent):
+    def __init__(self, skip_turn_p = 0.1):
+        super().__init__()
+        self.skip_turn_p = skip_turn_p
+
     def get_actions(self, state, team):
         actions = super().get_actions(state, team)
         for i in range(len(actions)):
-            if random.random() < 0.10:
+            if random.random() < self.skip_turn_p:
                 actions[i] = 0
         return actions

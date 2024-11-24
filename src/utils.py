@@ -62,8 +62,17 @@ def calculate_reward(old_info, new_info, distance_map, old_state) -> np.ndarray:
     
     reward_for_bonus = get_bonus_reward(old_state, old_hunter_coords, new_hunter_coords, distance_map)
     reward_for_bonus[(killed_anybody == 1) & (reward_for_bonus < 0)] = 0
+
+    reward_for_distances = get_distance_reward(new_hunter_coords, distance_map)
     
-    result = dist_difference * -0.5 + prey_kills * 2 + bonus_kills * 1.0 + enemy_kills * 1.5 * (agents_bonus_counts > 0) + 0.1 * reward_for_bonus
+    result = (
+        dist_difference * -0.5 +
+        prey_kills * 2.0 +
+        bonus_kills * 1.7 +
+        enemy_kills * (agents_bonus_counts > 0) * 1.5 +
+        reward_for_bonus * 0.25 +
+        reward_for_distances * 0.25
+    )
 
     stands_still = check_for_standing_still(old_info, new_info)
     result[stands_still == 1] = -0.7
@@ -83,7 +92,16 @@ def get_bonus_reward(old_state, old_hunter_coords, new_hunter_coords, distance_m
     new_predators2bonuses_distances = np.take_along_axis(new_predators_distances, (y_bonus_coords * 40 + x_bonus_coords)[None, :], axis=1).squeeze()
 
     return np.min(old_predators2bonuses_distances, axis=1) - np.take_along_axis(new_predators2bonuses_distances, old_bonus_numbers[:, None], axis=1).squeeze()
-    
+
+
+def get_distance_reward(new_hunter_coords, distance_map):
+    new_predators_distances = distance_map[new_hunter_coords[:, 0] * 40 + new_hunter_coords[:, 1]]
+    distances_between_hunters = np.take_along_axis(new_predators_distances, (new_hunter_coords[:, 0] * 40 + new_hunter_coords[:, 1])[None, :], axis=1).squeeze()
+    np.fill_diagonal(distances_between_hunters, float("inf"))
+    reward = distances_between_hunters.min(-1) / 20
+
+    return reward
+
 
 def check_for_standing_still(info, next_info):
     out = []

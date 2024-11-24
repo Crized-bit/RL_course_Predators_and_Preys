@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from torchrl.data import ListStorage, PrioritizedReplayBuffer
 from torch import nn
 from torch.nn import functional as F
 from torch.optim import Adam  # type: ignore
@@ -47,8 +48,8 @@ class DQN:
         self.policy_model_2 = DQNModel(self.num_input_channels, embedding_size).to(self.device)
         self.target_model_2.load_state_dict(self.policy_model_2.state_dict())
 
-        self.replay_buffer = ReplayMemory(INITIAL_STEPS)
-        self.criterion = nn.HuberLoss()
+        self.replay_buffer = PrioritizedReplayBuffer(alpha=0.6, beta=0.4, storage=ListStorage(INITIAL_STEPS), collate_fn=lambda x: x)
+        self.criterion = nn.HuberLoss(reduction="none")
         self.optimizer_1 = Adam(self.policy_model_1.parameters(), lr=LEARNING_RATE)
         self.optimizer_2 = Adam(self.policy_model_2.parameters(), lr=LEARNING_RATE)
         self.tau = 0.005
@@ -62,18 +63,18 @@ class DQN:
     def consume_transition(self, transition):
         # Add transition to a replay buffer.
         # Hint: use deque with specified maxlen. It will remove old experience automatically.
-        self.replay_buffer.push(transition)
+        self.replay_buffer.add(transition)
 
     def sample_batch(self):
         # Sample batch from a replay buffer.
         # Hints:
         # 1. Use random.randint
         # 2. Turn your batch into a numpy.array before turning it to a Tensor. It will work faster
-        batch = self.replay_buffer.sample()
+        batch, buffer_info = self.replay_buffer.sample(batch_size=BATCH_SIZE, return_info=True)
         batch = Transition(*zip(*batch))
-        return batch
+        return batch, buffer_info
 
-    def train_step(self, batch):
+    def train_step(self, batch, buffer_info):
         self.policy_model_1.train()
         # Use batch to update DQN's network.
         img_batch = torch.tensor(np.concatenate(batch.img)).to(torch.float)
@@ -122,15 +123,20 @@ class DQN:
 
         # Compute the expected Q values
         expected_state_action_values = reward_batch + GAMMA * min_next_state_values
+        
+        buffer_weights = buffer_info["_weight"].to(self.device)
 
         loss_1 = self.criterion(state_action_values_1.to(torch.float), expected_state_action_values.to(torch.float))
         loss_2 = self.criterion(state_action_values_2.to(torch.float), expected_state_action_values.to(torch.float))
+        self.replay_buffer.update_priority(buffer_info["index"], loss_1.detach().mean(-1))
+        loss_1_mean = (loss_1 * buffer_weights.unsqueeze(1)).mean()
+        loss_2_mean = (loss_2 * buffer_weights.unsqueeze(1)).mean()
         # print(loss.item())
         # Optimize the model
         self.optimizer_1.zero_grad()
         self.optimizer_2.zero_grad()
-        loss_1.backward()
-        loss_2.backward()
+        loss_1_mean.backward()
+        loss_2_mean.backward()
         torch.nn.utils.clip_grad_value_(self.policy_model_1.parameters(), 50)
         torch.nn.utils.clip_grad_value_(self.policy_model_2.parameters(), 50)
         self.optimizer_1.step()
@@ -177,8 +183,8 @@ class DQN:
         # You don't need to change this
         self.consume_transition(transition)
         if self.steps % STEPS_PER_UPDATE == 0:
-            batch = self.sample_batch()
-            self.train_step(batch)
+            batch, buffer_info = self.sample_batch()
+            self.train_step(batch, buffer_info)
         self.soft_update_target_network()
         self.steps += 1
 

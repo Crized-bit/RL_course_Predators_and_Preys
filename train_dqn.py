@@ -31,8 +31,8 @@ env = VersusBotEnv(Realm(TwoTeamRocksMapLoader(), 2, bots={1: BrokenClosestTarge
 dqn = DQN(
     embedding_size=256,
     num_input_channels=6,
-    save_path="/home/vk/RL_course_Predators_and_Preys/best_bot_ddqn_closest_bonus_reward_greedy/",
-    load_path="/home/vk/RL_course_Predators_and_Preys/best_bot_ddqn_dummy_greedy/",
+    save_path="/home/vk/RL_course_Predators_and_Preys/best_bot_ddqn_closest_greedy_fixed",
+    # load_path="/home/vk/RL_course_Predators_and_Preys/best_bot_ddqn_dummy_greedy_fixed/",
     device=device,
 )
 eps_1 = 0.1
